@@ -86,11 +86,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	autHandlers := handler.NewAuthRoute(dbService)
+	authHandlers := handler.NewAuthRoute(dbService)
 	streamsHandlers := handler.NewStreamsRoute(dbService, kitchenMiddleware)
 
 	httpHandlers := map[string]handler.HttpRoutes{
-		"auth":    autHandlers,
+		"auth":    authHandlers,
 		"streams": streamsHandlers,
 	}
 
