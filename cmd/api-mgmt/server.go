@@ -80,6 +80,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	kitchenMiddleware := handler.NewKitchenMiddleware(dbService)
+	if err != nil {
+		log.Printf("Error creating kitchen middleware: %v\n", err)
+		os.Exit(1)
+	}
+
 	autHandlers := handler.NewAuthRoute(dbService)
 
 	httpHandlers := map[string]handler.HttpRoutes{

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/AndrewSerra/kitchen/internal/db"
 	"github.com/AndrewSerra/kitchen/internal/models"
@@ -13,12 +14,14 @@ import (
 )
 
 type AuthRoute struct {
-	db *db.DBService
+	db             *db.DBService
+	tokenGenerator *utils.TokenGenerator
 }
 
 func NewAuthRoute(db *db.DBService) *AuthRoute {
 	return &AuthRoute{
-		db: db,
+		db:             db,
+		tokenGenerator: utils.NewTokenGenerator(),
 	}
 }
 
@@ -26,6 +29,8 @@ func (h *AuthRoute) Routes() *chi.Mux {
 	router := chi.NewRouter()
 	router.Post("/login", h.Login)
 	router.Post("/register", h.Register)
+	router.Post("/refresh", h.Refresh)
+	router.Post("/logout", h.Logout)
 	return router
 }
 
@@ -119,4 +124,109 @@ func (h *AuthRoute) Register(w http.ResponseWriter, r *http.Request) {
 	registerResponse.AccessToken = tokenSet.AccessToken
 
 	responseResourceCreated(w, registerResponse)
+}
+
+func (h *AuthRoute) Refresh(w http.ResponseWriter, r *http.Request) {
+	authorizationHeader := r.Header.Get("Authorization")
+	if authorizationHeader == "" {
+		responseResourceUnauthorized(w, models.RefreshResponse{
+			Success: false,
+			Message: "missing authorization header",
+		})
+		return
+	}
+
+	parts := strings.SplitN(authorizationHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+		responseResourceUnauthorized(w, models.RefreshResponse{
+			Success: false,
+			Message: "invalid authorization header",
+		})
+		return
+	}
+	token := parts[1]
+
+	tokenSet, err := h.db.RefreshTokens(token)
+	if err != nil {
+		if errors.Is(err, utils.TokenExpiredError) ||
+			errors.Is(err, utils.TokenNotYetValidError) ||
+			errors.Is(err, utils.TokenParsingError) ||
+			errors.Is(err, utils.TokenInvalidError) ||
+			errors.Is(err, utils.TokenClaimParsingError) ||
+			errors.Is(err, utils.TokenIDMismatchError) ||
+			errors.Is(err, db.TokenNotExistsError) ||
+			errors.Is(err, utils.TokenInactiveError) ||
+			errors.Is(err, db.TokenHashMismatchError) {
+			responseResourceUnauthorized(w, models.RefreshResponse{
+				Success: false,
+				Message: "invalid refresh token",
+			})
+			return
+		}
+
+		responseResourceInternalServerError(w, err, models.RefreshResponse{
+			Success: false,
+			Message: "could not refresh tokens",
+		})
+		return
+	}
+
+	responseResourceOK(w, models.RefreshResponse{
+		Success:      true,
+		Message:      "tokens refreshed",
+		AccessToken:  tokenSet.AccessToken,
+		RefreshToken: tokenSet.RefreshToken,
+	})
+}
+
+func (h *AuthRoute) Logout(w http.ResponseWriter, r *http.Request) {
+	authorizationHeader := r.Header.Get("Authorization")
+	if authorizationHeader == "" {
+		responseResourceUnauthorized(w, models.LogoutResponse{
+			Success: false,
+			Message: "missing authorization header",
+		})
+		return
+	}
+
+	headerParts := strings.SplitN(authorizationHeader, " ", 2)
+	if len(headerParts) != 2 || !strings.EqualFold(headerParts[0], "Bearer") || headerParts[1] == "" {
+		responseResourceUnauthorized(w, models.LogoutResponse{
+			Success: false,
+			Message: "invalid authorization header",
+		})
+		return
+	}
+	token := headerParts[1]
+
+	tokenID, err := h.tokenGenerator.GetTokenIDFromTokenAllowExpired(token)
+	if err != nil {
+		responseResourceUnauthorized(w, models.LogoutResponse{
+			Success: false,
+			Message: "invalid token",
+		})
+		return
+	}
+
+	err = h.db.DisableRefreshToken(tokenID, token)
+	if err == nil || errors.Is(err, db.TokenNotExistsError) {
+		responseResourceOK(w, models.LogoutResponse{
+			Success: true,
+			Message: "logout successful",
+		})
+		return
+	}
+
+	if errors.Is(err, db.TokenHashMismatchError) {
+		responseResourceUnauthorized(w, models.LogoutResponse{
+			Success: false,
+			Message: "invalid token",
+		})
+		return
+	}
+
+	responseResourceInternalServerError(w, err, models.LogoutResponse{
+		Success: false,
+		Message: "could not disable refresh token",
+	})
 }

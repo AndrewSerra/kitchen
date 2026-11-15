@@ -37,10 +37,17 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		localData, err := loadLocalData()
+		if err != nil {
+			fmt.Println("Error loading local data:", err)
+			return err
+		}
+
 		apiService := NewAPIService(config.Server.URL)
 
 		cmd.SetContext(context.WithValue(cmd.Context(), "config", config))
 		cmd.SetContext(context.WithValue(cmd.Context(), "apiService", apiService))
+		cmd.SetContext(context.WithValue(cmd.Context(), "localData", localData))
 		return nil
 	},
 }

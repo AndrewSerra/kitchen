@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -12,6 +13,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+var TokenUnexpectedSigningMethodError = errors.New("unexpected signing method")
+var TokenExpiredError = errors.New("token expired")
+var TokenInvalidError = errors.New("token invalid")
+var TokenNotYetValidError = errors.New("token not yet valid")
+var TokenParsingError = errors.New("token parsing error")
+var TokenClaimParsingError = errors.New("token claim parsing error")
+var TokenIDMismatchError = errors.New("token ID mismatch")
+var TokenInactiveError = errors.New("token inactive")
+var TokenUserIDNotFoundError = errors.New("user ID not found in token claims")
+var TokenTokenIDNotFoundError = errors.New("token ID not found in token claims")
 
 type AccessTokenPayload struct {
 	UserID int `json:"user_id"`
@@ -111,15 +123,151 @@ func (t *TokenGenerator) SignToken(token *jwt.Token) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func HashToken(token string) (string, error) {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:]), nil
+func (t *TokenGenerator) VerifyToken(token string) (*jwt.Token, error) {
+	secret := t.getTokenSecret()
+	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, TokenUnexpectedSigningMethodError
+		}
+		return []byte(secret), nil
+	},
+		jwt.WithAudience(t.audience),
+		jwt.WithSubject(t.subject),
+		jwt.WithIssuer(t.issuer),
+		jwt.WithNotBeforeRequired(),
+		jwt.WithExpirationRequired())
+	if err != nil {
+		return nil, t.mapVerifyTokenError(err)
+	}
+
+	return parsedToken, nil
 }
 
-func CompareTokenToHash(token string, hash string) (bool, error) {
-	tokenHash, err := HashToken(token)
+// GetUserIDFromToken extracts user_id from an access token (strict expiry).
+func (t *TokenGenerator) GetUserIDFromToken(token string) (int, error) {
+	verifiedToken, err := t.VerifyToken(token)
 	if err != nil {
-		return false, fmt.Errorf("hashing token: %w", err)
+		return 0, err
 	}
-	return tokenHash == hash, nil
+
+	claims, ok := verifiedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, TokenClaimParsingError
+	}
+	raw, ok := claims[fmt.Sprintf("%s/%s", t.namespace, "user_id")]
+	if !ok {
+		return 0, TokenUserIDNotFoundError
+	}
+	return parseUserID(raw)
+}
+
+func (t *TokenGenerator) GetTokenIDFromToken(token string) (uuid.UUID, error) {
+	verifiedToken, err := t.VerifyToken(token)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	claims, ok := verifiedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return uuid.Nil, TokenClaimParsingError
+	}
+	if _, ok := claims["jti"]; !ok {
+		return uuid.Nil, TokenTokenIDNotFoundError
+	}
+	return t.ParseTokenID(claims["jti"])
+}
+
+// GetTokenIDFromTokenAllowExpired extracts jti from a refresh token.
+// Expiry is not required so logout can revoke expired sessions.
+func (t *TokenGenerator) GetTokenIDFromTokenAllowExpired(token string) (uuid.UUID, error) {
+	verifiedToken, err := t.verifyTokenAllowExpired(token)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	claims, ok := verifiedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return uuid.Nil, TokenClaimParsingError
+	}
+	if _, ok := claims["jti"]; !ok {
+		return uuid.Nil, TokenTokenIDNotFoundError
+	}
+	return t.ParseTokenID(claims["jti"])
+}
+
+func (t *TokenGenerator) verifyTokenAllowExpired(token string) (*jwt.Token, error) {
+	secret := t.getTokenSecret()
+	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, TokenUnexpectedSigningMethodError
+		}
+		return []byte(secret), nil
+	},
+		jwt.WithAudience(t.audience),
+		jwt.WithSubject(t.subject),
+		jwt.WithIssuer(t.issuer))
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			// Signature and other claims were validated; allow expired for logout.
+			if parsedToken != nil {
+				return parsedToken, nil
+			}
+		}
+		return nil, t.mapVerifyTokenError(err)
+	}
+	return parsedToken, nil
+}
+
+func parseUserID(raw any) (int, error) {
+	switch v := raw.(type) {
+	case float64:
+		return int(v), nil
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	default:
+		return 0, TokenUserIDNotFoundError
+	}
+}
+
+func (t *TokenGenerator) ParseTokenID(jtiClaim any) (uuid.UUID, error) {
+	switch v := jtiClaim.(type) {
+	case string:
+		tokenID, err := uuid.Parse(v)
+		if err != nil {
+			return uuid.Nil, TokenIDMismatchError
+		}
+		return tokenID, nil
+	case uuid.UUID:
+		return v, nil
+	default:
+		return uuid.Nil, TokenIDMismatchError
+	}
+}
+
+func (t *TokenGenerator) mapVerifyTokenError(err error) error {
+	switch {
+	case errors.Is(err, jwt.ErrTokenExpired):
+		return TokenExpiredError
+	case errors.Is(err, jwt.ErrTokenNotValidYet):
+		return TokenNotYetValidError
+	case errors.Is(err, TokenUnexpectedSigningMethodError):
+		return TokenInvalidError
+	case errors.Is(err, jwt.ErrTokenMalformed),
+		errors.Is(err, jwt.ErrTokenSignatureInvalid),
+		errors.Is(err, jwt.ErrTokenUnverifiable):
+		return TokenParsingError
+	default:
+		return TokenParsingError
+	}
+}
+
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func CompareTokenToHash(token string, hash string) bool {
+	return HashToken(token) == hash
 }

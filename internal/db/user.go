@@ -44,7 +44,7 @@ func (dbService *DBService) CreateUser(registerRequest *models.RegisterRequest) 
 		return nil, nil, fmt.Errorf("creating user: %w", err)
 	}
 
-	tokenSet, err := dbService.CreateTokenSetTx(tx, user.ID)
+	tokenSet, err := dbService.createTokenSetTx(tx, user.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating token set: %w", err)
 	}

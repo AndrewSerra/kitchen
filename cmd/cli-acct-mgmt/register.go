@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -53,8 +54,28 @@ func registerHandler(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	if err := apiService.SendRegisterRequest(email, password); err != nil {
+	localData, ok := cmd.Context().Value("localData").(LocalData)
+	if !ok {
+		fmt.Println("Error getting local data from context")
+		return
+	}
+
+	registerResponse, err := apiService.SendRegisterRequest(email, password)
+	if err != nil {
 		fmt.Println("Error registering:", err)
+		return
+	}
+
+	localData[Email(email)] = LocalAccountData{
+		ID:           registerResponse.User.ID,
+		AccessToken:  registerResponse.AccessToken,
+		RefreshToken: registerResponse.RefreshToken,
+		SavedAt:      time.Now(),
+	}
+
+	err = saveLocalData(localData)
+	if err != nil {
+		fmt.Println("Error saving local data:", err)
 		return
 	}
 

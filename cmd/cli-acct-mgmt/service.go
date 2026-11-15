@@ -46,20 +46,20 @@ func (apiService *APIService) getAPIURL(serviceName string, path string) string 
 	return fmt.Sprintf("%s/%s/%s", basePath, apiService.servicePath[serviceName], path)
 }
 
-func (apiService *APIService) SendRegisterRequest(email string, password string) error {
+func (apiService *APIService) SendRegisterRequest(email string, password string) (*models.RegisterResponse, error) {
 	registerRequest := models.RegisterRequest{
 		Email:    email,
 		Password: password,
 	}
 	if err := utils.ValidateRegisterRequest(&registerRequest); err != nil {
-		return err
+		return nil, err
 	}
 
 	url := apiService.getAPIURL(string(AuthServiceName), "register")
 
 	reqBody, err := json.Marshal(registerRequest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -67,38 +67,63 @@ func (apiService *APIService) SendRegisterRequest(email string, password string)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBody))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	response, err := apiService.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to register: %s", response.Status)
+	if response.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("failed to register: %s", response.Status)
 	}
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var registerResponse models.RegisterResponse
 	if err := json.Unmarshal(responseBody, &registerResponse); err != nil {
-		return err
+		return nil, err
 	}
 
 	if !registerResponse.Success {
-		return fmt.Errorf("failed to register: %s", registerResponse.Message)
+		return nil, fmt.Errorf("failed to register: %s", registerResponse.Message)
 	}
 
-	fmt.Println("Registered successfully")
-	fmt.Println("User ID:", registerResponse.User.ID)
-	fmt.Println("User Email:", registerResponse.User.Email)
-	fmt.Println("User Created At:", registerResponse.User.CreatedAt)
-	fmt.Println("User Updated At:", registerResponse.User.UpdatedAt)
+	return &registerResponse, nil
+}
 
-	return nil
+func (apiService *APIService) SendLogoutRequest(refreshToken string) (*models.LogoutResponse, error) {
+	url := apiService.getAPIURL(string(AuthServiceName), "logout")
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", refreshToken))
+	response, err := apiService.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to logout: %s", response.Status)
+	}
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var logoutResponse models.LogoutResponse
+	if err := json.Unmarshal(responseBody, &logoutResponse); err != nil {
+		return nil, err
+	}
+
+	return &logoutResponse, nil
 }
