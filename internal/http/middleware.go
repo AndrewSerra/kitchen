@@ -14,6 +14,8 @@ import (
 var AuthorizationHeaderMissingError = errors.New("missing authorization header")
 var AuthorizationHeaderInvalidError = errors.New("invalid authorization header")
 
+const UserIDContextKey = "userID"
+
 type KitchenMiddleware struct {
 	dbService      *db.DBService
 	tokenGenerator *utils.TokenGenerator
@@ -64,7 +66,7 @@ func (km *KitchenMiddleware) WithValidAccessToken(next http.Handler) http.Handle
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "userID", userID)
+		ctx := context.WithValue(r.Context(), UserIDContextKey, userID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

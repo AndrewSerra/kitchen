@@ -10,3 +10,7 @@ var InvalidCredentialsError = errors.New("invalid credentials")
 
 var TokenNotExistsError = errors.New("token not exists")
 var TokenHashMismatchError = errors.New("token hash mismatch")
+
+var StreamExistsError = errors.New("stream already exists")
+var StreamNotFoundError = errors.New("stream not found")
+var StreamUserNotFoundError = errors.New("stream user not found")

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/AndrewSerra/kitchen/internal/db"
+	"github.com/AndrewSerra/kitchen/internal/logger"
 	"github.com/AndrewSerra/kitchen/internal/models"
 	"github.com/AndrewSerra/kitchen/internal/utils"
 	"github.com/go-chi/chi/v5"
@@ -62,6 +63,7 @@ func (h *AuthRoute) Login(w http.ResponseWriter, r *http.Request) {
 		loginResponse.Success = false
 		loginResponse.Message = "could not validate user"
 
+		logger.Error("failed to validate user", "error", err)
 		responseResourceInternalServerError(w, err, loginResponse)
 		return
 	}
@@ -92,6 +94,7 @@ func (h *AuthRoute) Register(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(registerData.Password), bcrypt.DefaultCost)
 	if err != nil {
+		logger.Error("failed to hash password", "error", err)
 		responseResourceInternalServerError(w, err, map[string]string{"message": "could not hash password"})
 		return
 	}
@@ -113,6 +116,7 @@ func (h *AuthRoute) Register(w http.ResponseWriter, r *http.Request) {
 		registerResponse.Message = "could not create user"
 		registerResponse.User = user
 
+		logger.Error("failed to create user", "error", err)
 		responseResourceInternalServerError(w, err, registerResponse)
 		return
 	}
@@ -164,6 +168,7 @@ func (h *AuthRoute) Refresh(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		logger.Error("failed to refresh tokens", "error", err)
 		responseResourceInternalServerError(w, err, models.RefreshResponse{
 			Success: false,
 			Message: "could not refresh tokens",
@@ -225,6 +230,7 @@ func (h *AuthRoute) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Error("failed to disable refresh token", "error", err)
 	responseResourceInternalServerError(w, err, models.LogoutResponse{
 		Success: false,
 		Message: "could not disable refresh token",

@@ -9,7 +9,7 @@ import (
 	"github.com/AndrewSerra/kitchen/internal/models"
 )
 
-// REQUEST BODY VALIDATION
+// AUTH REQUEST BODY VALIDATION
 // ========================================================
 func ValidateRegisterRequest(request *models.RegisterRequest) error {
 	if request.Email == "" {
@@ -42,6 +42,16 @@ func ValidateRefreshTokenPayload(payload RefreshTokenPayload) error {
 	if uuid.MustParse(payload.TokenID.String()) == uuid.Nil {
 		return errors.New("token_id is required")
 	}
+	return nil
+}
+
+// STREAMS REQUEST BODY VALIDATION
+// ========================================================
+func ValidateCreateStreamRequest(request *models.CreateStreamRequest) error {
+	if request.Name == "" {
+		return errors.New("name is required")
+	}
+	// TODO: Add more validation for the name
 	return nil
 }
 
