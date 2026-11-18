@@ -51,7 +51,6 @@ func ValidateCreateStreamRequest(request *models.CreateStreamRequest) error {
 	if request.Name == "" {
 		return errors.New("name is required")
 	}
-	// TODO: Add more validation for the name
 	return nil
 }
 

@@ -10,6 +10,17 @@ type Stream struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Streams = []*Stream
+
+type StreamListFilter struct {
+	Name   string
+	ID     int
+	Limit  int
+	Offset int
+	SortBy string
+	SortDir string
+}
+
 type CreateStreamRequest struct {
 	Name string `json:"name" required:"true"`
 }
@@ -27,9 +38,9 @@ type GetStreamResponse struct {
 }
 
 type GetAllStreamsResponse struct {
-	Streams []*Stream `json:"streams"`
-	Success bool      `json:"success"`
-	Message string    `json:"message"`
+	Streams Streams `json:"streams"`
+	Success bool    `json:"success"`
+	Message string  `json:"message"`
 }
 
 type DeleteStreamResponse struct {

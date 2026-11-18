@@ -48,13 +48,13 @@ func registerHandler(cmd *cobra.Command, args []string) {
 	email, _ := cmd.Flags().GetString("email")
 	password := string(passwordIn)
 
-	apiService, ok := cmd.Context().Value("apiService").(*APIService)
+	apiService, ok := cmd.Context().Value(CONTEXT_API_SERVICE_KEY).(*APIService)
 	if !ok {
 		fmt.Println("Error getting api service from context")
 		return
 	}
 
-	localData, ok := cmd.Context().Value("localData").(LocalData)
+	localCredentials, ok := cmd.Context().Value(CONTEXT_LOCAL_CREDS_KEY).(LocalCredentials)
 	if !ok {
 		fmt.Println("Error getting local data from context")
 		return
@@ -66,14 +66,14 @@ func registerHandler(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	localData[Email(email)] = LocalAccountData{
+	localCredentials[Email(email)] = LocalAccountData{
 		ID:           registerResponse.User.ID,
 		AccessToken:  registerResponse.AccessToken,
 		RefreshToken: registerResponse.RefreshToken,
 		SavedAt:      time.Now(),
 	}
 
-	err = saveLocalData(localData)
+	err = saveLocalAccountData(localCredentials)
 	if err != nil {
 		fmt.Println("Error saving local data:", err)
 		return

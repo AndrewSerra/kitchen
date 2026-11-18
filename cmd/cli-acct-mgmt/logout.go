@@ -25,13 +25,13 @@ var logoutCmd = &cobra.Command{
 }
 
 func logoutHandler(cmd *cobra.Command, args []string) {
-	localData, ok := cmd.Context().Value("localData").(LocalData)
+	localCredentials, ok := cmd.Context().Value(CONTEXT_LOCAL_CREDS_KEY).(LocalCredentials)
 	if !ok {
 		fmt.Println("Error getting local data from context")
 		return
 	}
 
-	apiService, ok := cmd.Context().Value("apiService").(*APIService)
+	apiService, ok := cmd.Context().Value(CONTEXT_API_SERVICE_KEY).(*APIService)
 	if !ok {
 		fmt.Println("Error getting api service from context")
 		return
@@ -51,7 +51,7 @@ func logoutHandler(cmd *cobra.Command, args []string) {
 	emailsToLogout := []string{}
 
 	if all {
-		for k := range localData {
+		for k := range localCredentials {
 			emailsToLogout = append(emailsToLogout, k)
 		}
 	} else {
@@ -66,13 +66,13 @@ func logoutHandler(cmd *cobra.Command, args []string) {
 
 	for _, email := range emailsToLogout {
 
-		if _, ok := localData[email]; !ok {
+		if _, ok := localCredentials[email]; !ok {
 			errorEmailsChan <- email
 			continue
 		}
 
 		wg.Go(func() {
-			logoutResponse, err := apiService.SendLogoutRequest(localData[email].RefreshToken)
+			logoutResponse, err := apiService.SendLogoutRequest(localCredentials[email].RefreshToken)
 			if err != nil {
 				fmt.Println("Error sending logout request:", err)
 				errorEmailsChan <- email
@@ -85,7 +85,7 @@ func logoutHandler(cmd *cobra.Command, args []string) {
 				return
 			} else {
 				localDataMutex.Lock()
-				delete(localData, email)
+				delete(localCredentials, email)
 				localDataMutex.Unlock()
 			}
 
@@ -94,7 +94,7 @@ func logoutHandler(cmd *cobra.Command, args []string) {
 
 	wg.Wait()
 	close(errorEmailsChan)
-	saveLocalData(localData)
+	saveLocalAccountData(localCredentials)
 
 	var errorEmails []string
 

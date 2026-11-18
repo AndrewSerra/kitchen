@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/AndrewSerra/kitchen/internal/db"
@@ -152,8 +153,24 @@ func (sr *StreamsRoute) GetAllStreams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	streams, err := sr.dbService.GetAllStreamsForUser(userID)
+	filter, err := parseStreamListFilter(r.URL.Query())
 	if err != nil {
+		responseResourceBadRequest(w, models.GetAllStreamsResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	streams, err := sr.dbService.ListStreams(userID, filter)
+	if err != nil {
+		if errors.Is(err, db.InvalidStreamFilterError) {
+			responseResourceBadRequest(w, models.GetAllStreamsResponse{
+				Success: false,
+				Message: err.Error(),
+			})
+			return
+		}
 		logger.Error("Failed to get all streams", "error", err)
 		responseResourceInternalServerError(w, err, models.GetAllStreamsResponse{
 			Success: false,
@@ -167,6 +184,40 @@ func (sr *StreamsRoute) GetAllStreams(w http.ResponseWriter, r *http.Request) {
 		Message: "Stream fetched successfully",
 		Streams: streams,
 	})
+}
+
+func parseStreamListFilter(query url.Values) (models.StreamListFilter, error) {
+	filter := models.StreamListFilter{
+		Name:    query.Get("name"),
+		SortBy:  query.Get("sort_by"),
+		SortDir: query.Get("sort_direction"),
+	}
+
+	if idRaw := query.Get("id"); idRaw != "" {
+		id, err := strconv.Atoi(idRaw)
+		if err != nil {
+			return models.StreamListFilter{}, errors.New("invalid id")
+		}
+		filter.ID = id
+	}
+
+	if limitRaw := query.Get("limit"); limitRaw != "" {
+		limit, err := strconv.Atoi(limitRaw)
+		if err != nil || limit < 0 {
+			return models.StreamListFilter{}, errors.New("invalid limit")
+		}
+		filter.Limit = limit
+	}
+
+	if offsetRaw := query.Get("offset"); offsetRaw != "" {
+		offset, err := strconv.Atoi(offsetRaw)
+		if err != nil || offset < 0 {
+			return models.StreamListFilter{}, errors.New("invalid offset")
+		}
+		filter.Offset = offset
+	}
+
+	return filter, nil
 }
 
 func (sr *StreamsRoute) DeleteStream(w http.ResponseWriter, r *http.Request) {

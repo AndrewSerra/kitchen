@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/AndrewSerra/kitchen/internal/models"
 	"github.com/jackc/pgerrcode"
@@ -58,7 +59,7 @@ func (dbService *DBService) GetStream(userID int, streamID int) (*models.Stream,
 	return &stream, nil
 }
 
-func (dbService *DBService) GetAllStreamsForUser(userID int) ([]*models.Stream, error) {
+func (dbService *DBService) ListStreams(userID int, filter models.StreamListFilter) ([]*models.Stream, error) {
 	if dbService.conn == nil {
 		return nil, DatabaseConnectionError
 	}
@@ -68,9 +69,72 @@ func (dbService *DBService) GetAllStreamsForUser(userID int) ([]*models.Stream, 
 	FROM streams
 	WHERE user_id = $1
 	`
+	args := []any{userID}
+	argPos := 2
 
+	if filter.Name != "" {
+		query += fmt.Sprintf(" AND name = $%d", argPos)
+		args = append(args, filter.Name)
+		argPos++
+	}
+	if filter.ID != 0 {
+		query += fmt.Sprintf(" AND id = $%d", argPos)
+		args = append(args, filter.ID)
+		argPos++
+	}
+
+	sortBy, err := allowedStreamSortBy(filter.SortBy)
+	if err != nil {
+		return nil, err
+	}
+	sortDir, err := allowedStreamSortDir(filter.SortDir)
+	if err != nil {
+		return nil, err
+	}
+	query += fmt.Sprintf(" ORDER BY %s %s", sortBy, sortDir)
+
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argPos)
+		args = append(args, filter.Limit)
+		argPos++
+	}
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", argPos)
+		args = append(args, filter.Offset)
+	}
+
+	return dbService.queryStreams(query, args...)
+}
+
+func allowedStreamSortBy(sortBy string) (string, error) {
+	switch sortBy {
+	case "", "id":
+		return "id", nil
+	case "name":
+		return "name", nil
+	case "created_at":
+		return "created_at", nil
+	case "updated_at":
+		return "updated_at", nil
+	default:
+		return "", fmt.Errorf("%w: sort_by", InvalidStreamFilterError)
+	}
+}
+
+func allowedStreamSortDir(sortDir string) (string, error) {
+	switch sortDir {
+	case "", "asc":
+		return "ASC", nil
+	case "desc":
+		return "DESC", nil
+	default:
+		return "", fmt.Errorf("%w: sort_direction", InvalidStreamFilterError)
+	}
+}
+
+func (dbService *DBService) queryStreams(query string, args ...any) ([]*models.Stream, error) {
 	streams := make([]*models.Stream, 0)
-	rows, err := dbService.conn.Query(context.Background(), query, userID)
+	rows, err := dbService.conn.Query(context.Background(), query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +148,8 @@ func (dbService *DBService) GetAllStreamsForUser(userID int) ([]*models.Stream, 
 		streams = append(streams, &stream)
 	}
 
-	if rows.Err() != nil {
-		return nil, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return streams, nil
 }

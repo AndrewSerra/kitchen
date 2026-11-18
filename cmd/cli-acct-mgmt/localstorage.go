@@ -1,16 +1,36 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/AndrewSerra/kitchen/internal/models"
 	"github.com/pelletier/go-toml/v2"
 )
 
-const LOCAL_DATA_FILE_PATH = "/Users/andrewserra/GithubProjects/kitchen/credentials.toml"
+const LOCAL_CREDS_FILE_PATH = "/Users/andrewserra/GithubProjects/kitchen/credentials.toml"
+const LOCAL_DATACACHE_FILE_PATH = "/Users/andrewserra/GithubProjects/kitchen/datacache.toml"
 
+const READ_WRITE_PERMISSIONS = 0644
+
+// Data Cache Types
+// ===========================
+type LocalStreamData struct {
+	Stream *models.Stream `toml:"stream" json:"stream"`
+	// IsSynced bool           `toml:"is_synced" json:"is_synced"`
+}
+
+type LocalAccountDataCache struct {
+	Streams []*LocalStreamData `toml:"streams"`
+}
+
+type LocalDataCache map[Email]LocalAccountDataCache
+
+// Account and Credential Types
+// ===========================
 type Email = string
 
 type LocalAccountData struct {
@@ -20,36 +40,38 @@ type LocalAccountData struct {
 	SavedAt      time.Time `toml:"saved_at"`
 }
 
-type LocalData map[Email]LocalAccountData
+type LocalCredentials map[Email]LocalAccountData
 
-func loadLocalData() (LocalData, error) {
-	inData, err := os.ReadFile(LOCAL_DATA_FILE_PATH)
+// Credential Functions
+// ===========================
+func loadLocalCredentials() (LocalCredentials, error) {
+	inData, err := os.ReadFile(LOCAL_CREDS_FILE_PATH)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return LocalData{}, nil
+			return LocalCredentials{}, nil
 		}
 
-		return LocalData{}, err
+		return LocalCredentials{}, err
 	}
 
-	var localData LocalData
+	var localData LocalCredentials
 	err = toml.Unmarshal(inData, &localData)
 	if err != nil {
-		return LocalData{}, err
+		return LocalCredentials{}, err
 	}
 
 	return localData, nil
 }
 
-func saveLocalData(localData LocalData) error {
+func saveLocalAccountData(localData LocalCredentials) error {
 	data, err := toml.Marshal(localData)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(LOCAL_DATA_FILE_PATH, data, 0644)
+	return os.WriteFile(LOCAL_CREDS_FILE_PATH, data, READ_WRITE_PERMISSIONS)
 }
 
-func printSavedAccounts(localData LocalData) {
+func printSavedAccounts(localData LocalCredentials) {
 	emailWidth := 40
 	idWidth := 10
 	savedAtWidth := 20
@@ -64,4 +86,76 @@ func printSavedAccounts(localData LocalData) {
 		}
 		fmt.Printf("%-*s %-*d %-*s\n", emailWidth, k, idWidth, v.ID, savedAtWidth, savedAt)
 	}
+}
+
+func getAccessTokenForEmail(localData LocalCredentials, email Email) (string, error) {
+	accountData, ok := localData[email]
+	if !ok {
+		return "", fmt.Errorf("account not found")
+	}
+	return accountData.AccessToken, nil
+}
+
+func getRefreshTokenForEmail(localData LocalCredentials, email Email) (string, error) {
+	accountData, ok := localData[email]
+	if !ok {
+		return "", fmt.Errorf("account not found")
+	}
+	return accountData.RefreshToken, nil
+}
+
+// Data Cache Functions
+// ===========================
+
+func loadLocalDataCache() (LocalDataCache, error) {
+	inData, err := os.ReadFile(LOCAL_DATACACHE_FILE_PATH)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return LocalDataCache{}, nil
+		}
+		return LocalDataCache{}, err
+	}
+
+	var localData LocalDataCache
+	err = json.Unmarshal(inData, &localData)
+	if err != nil {
+		return LocalDataCache{}, err
+	}
+	return localData, nil
+}
+
+func loadLocalAccountDataCache(email Email) (LocalAccountDataCache, error) {
+	localData, err := loadLocalDataCache()
+	if err != nil {
+		return LocalAccountDataCache{}, err
+	}
+
+	accountData, ok := localData[email]
+	if !ok {
+		return LocalAccountDataCache{}, fmt.Errorf("account not found")
+	}
+
+	return accountData, nil
+}
+
+func saveLocalDataCache(localData LocalDataCache) error {
+	data, err := json.Marshal(localData)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(LOCAL_DATACACHE_FILE_PATH, data, READ_WRITE_PERMISSIONS)
+}
+
+func saveLocalAccountDataCache(email Email, localAccountDataCache LocalAccountDataCache) error {
+	localDataCache, err := loadLocalDataCache()
+	if err != nil {
+		return err
+	}
+
+	if _, ok := localDataCache[email]; !ok {
+		return fmt.Errorf("account not found")
+	}
+
+	localDataCache[email] = localAccountDataCache
+	return nil
 }

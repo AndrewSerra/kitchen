@@ -39,7 +39,7 @@ var serverUrlConfigSubCmd = &cobra.Command{
 }
 
 func serverUrlConfigHandler(cmd *cobra.Command, args []string) {
-	config, ok := cmd.Context().Value("config").(Config)
+	config, ok := cmd.Context().Value(CONTEXT_CONFIG_KEY).(Config)
 
 	if !ok {
 		fmt.Println("Error getting config from context")

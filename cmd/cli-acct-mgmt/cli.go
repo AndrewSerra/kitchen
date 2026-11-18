@@ -12,6 +12,11 @@ import (
 
 const CONFIG_FILE_PATH = "/Users/andrewserra/GithubProjects/kitchen/config.toml"
 
+const CONTEXT_CONFIG_KEY = "config"
+const CONTEXT_API_SERVICE_KEY = "apiService"
+const CONTEXT_LOCAL_CREDS_KEY = "localCredentials"
+const CONTEXT_LOCAL_ACCOUNT_DATA_CACHE_KEY = "localAccountDataCache"
+
 func loadConfig() (Config, error) {
 	inData, err := os.ReadFile(CONFIG_FILE_PATH)
 	if err != nil {
@@ -37,7 +42,7 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		localData, err := loadLocalData()
+		localCredentials, err := loadLocalCredentials()
 		if err != nil {
 			fmt.Println("Error loading local data:", err)
 			return err
@@ -45,9 +50,9 @@ var rootCmd = &cobra.Command{
 
 		apiService := NewAPIService(config.Server.URL)
 
-		cmd.SetContext(context.WithValue(cmd.Context(), "config", config))
-		cmd.SetContext(context.WithValue(cmd.Context(), "apiService", apiService))
-		cmd.SetContext(context.WithValue(cmd.Context(), "localData", localData))
+		cmd.SetContext(context.WithValue(cmd.Context(), CONTEXT_CONFIG_KEY, config))
+		cmd.SetContext(context.WithValue(cmd.Context(), CONTEXT_API_SERVICE_KEY, apiService))
+		cmd.SetContext(context.WithValue(cmd.Context(), CONTEXT_LOCAL_CREDS_KEY, localCredentials))
 		return nil
 	},
 }

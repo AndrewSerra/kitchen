@@ -23,7 +23,7 @@ var listCmd = &cobra.Command{
 type ListFunc func()
 
 func listHandler(cmd *cobra.Command, args []string) {
-	localData, ok := cmd.Context().Value("localData").(LocalData)
+	localCredentials, ok := cmd.Context().Value(CONTEXT_LOCAL_CREDS_KEY).(LocalCredentials)
 	if !ok {
 		fmt.Println("Error getting local data from context")
 		return
@@ -35,7 +35,7 @@ func listHandler(cmd *cobra.Command, args []string) {
 	for _, arg := range args {
 		switch arg {
 		case "accounts":
-			funcs = append(funcs, func() { printSavedAccounts(localData) })
+			funcs = append(funcs, func() { printSavedAccounts(localCredentials) })
 		default:
 			invalidArgs = append(invalidArgs, arg)
 			return
